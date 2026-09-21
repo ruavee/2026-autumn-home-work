@@ -6,19 +6,27 @@ import company.vk.edu.distrib.compute.urlshortener.UrlShortenerService;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
+import java.nio.file.Path;
+import java.nio.file.Files;
 
 public class UrlShortenerServiceImpl implements UrlShortenerService {
     private final HttpServer server;
-    private final Dao<String> dao;
+    private final Dao<String> linksDao;
     private final Dao<String> usersDao;
 
     public UrlShortenerServiceImpl(int port) throws IOException {
-        this.dao = new InMemoryDao();
-        this.usersDao = new InMemoryDao();
+        Path storageDir = Path.of("build", "ruavee-storage");
+        Files.createDirectories(storageDir);
+
+        Path linksPath = storageDir.resolve("links" + port + ".db");
+        Path usersPath = storageDir.resolve("users" + port + ".db");
+
+        this.linksDao = new PersistentDao(linksPath);
+        this.usersDao = new PersistentDao(usersPath);
 
         this.server = HttpServer.create(new InetSocketAddress(port), 0);
         BasicAuth auth = new BasicAuth(usersDao);
-        server.createContext("/", new UrlShortenerHandler(dao, auth, port));
+        server.createContext("/", new UrlShortenerHandler(linksDao, auth, port));
     }
 
     @Override
