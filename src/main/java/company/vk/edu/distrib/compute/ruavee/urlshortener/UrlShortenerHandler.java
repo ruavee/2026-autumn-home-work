@@ -184,6 +184,10 @@ public class UrlShortenerHandler implements HttpHandler {
         }
     }
 
+    private boolean isLinksPath(String path) {
+        return "/v0/links".equals(path) || path.startsWith("/v0/links/");
+    }
+
     @Override
     public void handle(HttpExchange exchange) throws IOException {
         String path = exchange.getRequestURI().getPath();
@@ -191,7 +195,7 @@ public class UrlShortenerHandler implements HttpHandler {
 
         if ("GET".equals(method) && "/v0/status".equals(path)) {
             exchange.sendResponseHeaders(200, -1);
-        } else if ("/v0/links".equals(path) || path.startsWith("/v0/links/")) {
+        } else if (isLinksPath(path)) {
             handleLinks(exchange, method, path);
         } else if ("POST".equals(method) && "/internal/users".equals(path)) {
             auth.handleCreateUser(exchange);
