@@ -14,6 +14,20 @@ import java.util.concurrent.locks.ReentrantLock;
 public class UrlShortenerHandler implements HttpHandler {
 
     private static final String ALPHABET = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+
+    private static final int ID_LENGTH = 10;
+
+    private static final String METHOD_GET = "GET";
+    private static final String METHOD_POST = "POST";
+    private static final String METHOD_PUT = "PUT";
+    private static final String METHOD_DELETE = "DELETE";
+
+    private static final String STATUS_PATH = "/v0/status";
+    private static final String LINKS_PATH = "/v0/links";
+    private static final String LINKS_PREFIX = "/v0/links/";
+    private static final String USERS_PATH = "/internal/users";
+    private static final String ROOT_PATH = "/";
+
     private final SecureRandom random = new SecureRandom();
     private final Dao<String> dao;
     private final BasicAuth auth;
@@ -39,8 +53,8 @@ public class UrlShortenerHandler implements HttpHandler {
     }
 
     private boolean isValidId(String id) {
-        if (id.length() == 10) {
-            for (int i = 0; i < 10; i++) {
+        if (id.length() == ID_LENGTH) {
+            for (int i = 0; i < ID_LENGTH; i++) {
                 if (ALPHABET.indexOf(id.charAt(i)) == -1) {
                     return false;
                 }
@@ -51,11 +65,11 @@ public class UrlShortenerHandler implements HttpHandler {
     }
 
     private String randomId() throws IOException {
-        StringBuilder id;
+        StringBuilder id = new StringBuilder(ID_LENGTH);
         boolean exists = true;
         do {
-            id = new StringBuilder();
-            for (int i = 0; i < 10; i++) {
+            id.setLength(0);
+            for (int i = 0; i < ID_LENGTH; i++) {
                 id.append(ALPHABET.charAt(random.nextInt(ALPHABET.length())));
             }
             try {
@@ -164,28 +178,28 @@ public class UrlShortenerHandler implements HttpHandler {
             return;
         }
 
-        if ("POST".equals(method) && "/v0/links".equals(path)) {
+        if (METHOD_POST.equals(method) && LINKS_PATH.equals(path)) {
             handleCreate(exchange);
             return;
         }
 
-        if (!path.startsWith("/v0/links/")) {
+        if (!path.startsWith(LINKS_PREFIX)) {
             exchange.sendResponseHeaders(404, -1);
             return;
         }
 
-        String id = path.substring("/v0/links/".length());
+        String id = path.substring(LINKS_PREFIX.length());
 
         switch (method) {
-            case "GET" -> handleGet(exchange, id);
-            case "PUT" -> handleUpdate(exchange, id);
-            case "DELETE" -> handleDelete(exchange, id);
+            case METHOD_GET -> handleGet(exchange, id);
+            case METHOD_PUT -> handleUpdate(exchange, id);
+            case METHOD_DELETE -> handleDelete(exchange, id);
             default -> exchange.sendResponseHeaders(404, -1);
         }
     }
 
     private boolean isLinksPath(String path) {
-        return "/v0/links".equals(path) || path.startsWith("/v0/links/");
+        return LINKS_PATH.equals(path) || path.startsWith(LINKS_PREFIX);
     }
 
     @Override
@@ -193,14 +207,14 @@ public class UrlShortenerHandler implements HttpHandler {
         String path = exchange.getRequestURI().getPath();
         String method = exchange.getRequestMethod();
 
-        if ("GET".equals(method) && "/v0/status".equals(path)) {
+        if (METHOD_GET.equals(method) && STATUS_PATH.equals(path)) {
             exchange.sendResponseHeaders(200, -1);
         } else if (isLinksPath(path)) {
             handleLinks(exchange, method, path);
-        } else if ("POST".equals(method) && "/internal/users".equals(path)) {
+        } else if (METHOD_POST.equals(method) && USERS_PATH.equals(path)) {
             auth.handleCreateUser(exchange);
-        } else if ("GET".equals(method) && path.startsWith("/")) {
-            String id = path.substring(1);
+        } else if (METHOD_GET.equals(method) && path.startsWith(ROOT_PATH)) {
+            String id = path.substring(ROOT_PATH.length());
             handleRedirect(exchange, id);
         } else {
             exchange.sendResponseHeaders(404, -1);

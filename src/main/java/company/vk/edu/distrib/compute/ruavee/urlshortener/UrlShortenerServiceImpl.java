@@ -11,8 +11,6 @@ import java.nio.file.Files;
 
 public class UrlShortenerServiceImpl implements UrlShortenerService {
     private final HttpServer server;
-    private final Dao<String> linksDao;
-    private final Dao<String> usersDao;
 
     public UrlShortenerServiceImpl(int port) throws IOException {
         Path storageDir = Path.of("build", "ruavee-storage");
@@ -21,8 +19,8 @@ public class UrlShortenerServiceImpl implements UrlShortenerService {
         Path linksPath = storageDir.resolve("links" + port + ".db");
         Path usersPath = storageDir.resolve("users" + port + ".db");
 
-        this.linksDao = new PersistentDao(linksPath);
-        this.usersDao = new PersistentDao(usersPath);
+        Dao<String> linksDao = new PersistentDao(linksPath);
+        Dao<String> usersDao = new PersistentDao(usersPath);
 
         this.server = HttpServer.create(new InetSocketAddress(port), 0);
         BasicAuth auth = new BasicAuth(usersDao);

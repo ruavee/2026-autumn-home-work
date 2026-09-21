@@ -19,11 +19,15 @@ public class PersistentDao implements Dao<String> {
     private final Path file;
     private final ReentrantLock lock = new ReentrantLock();
 
+    private static String decode(String value) {
+        return new String(Base64.getDecoder().decode(value), StandardCharsets.UTF_8);
+    }
+
     private void load() throws IOException {
         for (String line : Files.readAllLines(this.file)) {
             String[] parts = line.split(" ", 2);
-            String key = new String(Base64.getDecoder().decode(parts[0]), StandardCharsets.UTF_8);
-            String value = new String(Base64.getDecoder().decode(parts[1]), StandardCharsets.UTF_8);
+            String key = decode(parts[0]);
+            String value = decode(parts[1]);
             storage.put(key, value);
         }
     }

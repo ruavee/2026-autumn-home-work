@@ -9,6 +9,7 @@ import java.util.NoSuchElementException;
 import java.util.concurrent.locks.ReentrantLock;
 
 public class BasicAuth {
+    private static final int CREDENTIAL_PARTS = 2;
     private final Dao<String> usersDao;
     private final ReentrantLock lock = new ReentrantLock();
 
@@ -29,7 +30,7 @@ public class BasicAuth {
                 return false;
             }
             if (data.contains(":")) {
-                String[] parts = data.split(":", 2);
+                String[] parts = data.split(":", CREDENTIAL_PARTS);
                 String login = parts[0];
                 String password = parts[1];
                 String expectedPassword;
@@ -56,8 +57,8 @@ public class BasicAuth {
 
     public void handleCreateUser(HttpExchange exchange) throws IOException {
         String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
-        String[] parts = body.split(":", 2);
-        if (parts.length != 2) {
+        String[] parts = body.split(":", CREDENTIAL_PARTS);
+        if (parts.length != CREDENTIAL_PARTS) {
             exchange.sendResponseHeaders(422, -1);
             return;
         }
