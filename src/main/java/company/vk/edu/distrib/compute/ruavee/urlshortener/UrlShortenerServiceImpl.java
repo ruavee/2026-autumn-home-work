@@ -13,7 +13,7 @@ public class UrlShortenerServiceImpl implements UrlShortenerService {
     private final HttpServer server;
 
     public UrlShortenerServiceImpl(int port) throws IOException {
-        Path storageDir = Path.of("build", "ruavee-storage");
+        Path storageDir = Path.of(System.getProperty("java.io.tmpdir"), "ruavee-storage");
         Files.createDirectories(storageDir);
 
         Path linksPath = storageDir.resolve("links" + port + ".db");

@@ -4,7 +4,6 @@ import java.net.http.HttpClient;
 import java.net.http.HttpResponse;
 
 import company.vk.edu.distrib.compute.AbstractHttpServiceFactory;
-import company.vk.edu.distrib.compute.test.TestUtils;
 import company.vk.edu.distrib.compute.test.TestUtils.Credentials;
 import company.vk.edu.distrib.compute.urlshortener.UrlShortenerService;
 import org.junit.jupiter.api.AfterAll;
