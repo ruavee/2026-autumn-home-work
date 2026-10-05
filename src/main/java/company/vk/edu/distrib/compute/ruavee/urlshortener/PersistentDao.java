@@ -6,15 +6,16 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
+import java.nio.file.StandardOpenOption;
 import java.util.Base64;
-import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.ReentrantLock;
 
 public class PersistentDao implements Dao<String> {
+    private static final String PUT = "P";
+    private static final String DELETE = "D";
     private final Map<String, String> storage;
     private final Path file;
     private final ReentrantLock lock = new ReentrantLock();
@@ -23,24 +24,29 @@ public class PersistentDao implements Dao<String> {
         return new String(Base64.getDecoder().decode(value), StandardCharsets.UTF_8);
     }
 
-    private void load() throws IOException {
-        for (String line : Files.readAllLines(this.file)) {
-            String[] parts = line.split(" ", 2);
-            String key = decode(parts[0]);
-            String value = decode(parts[1]);
-            storage.put(key, value);
-        }
+    private static String encode(String value) {
+        return Base64.getEncoder().encodeToString(value.getBytes(StandardCharsets.UTF_8));
     }
 
-    private void save() throws IOException {
-        List<String> lines = new ArrayList<>();
-        for (Map.Entry<String, String> entry : storage.entrySet()) {
-            String key = Base64.getEncoder().encodeToString(entry.getKey().getBytes(StandardCharsets.UTF_8));
-            String value = Base64.getEncoder().encodeToString(entry.getValue().getBytes(StandardCharsets.UTF_8));
-            String line = key + " " + value;
-            lines.add(line);
+    private void append(String line) throws IOException {
+        Files.writeString(
+                file,
+                line + System.lineSeparator(),
+                StandardCharsets.UTF_8,
+                StandardOpenOption.CREATE,
+                StandardOpenOption.APPEND
+        );
+    }
+
+    private void load() throws IOException {
+        for (String line : Files.readAllLines(file, StandardCharsets.UTF_8)) {
+            String[] parts = line.split(" ", 3);
+            if (PUT.equals(parts[0])) {
+                storage.put(decode(parts[1]), decode(parts[2]));
+            } else if (DELETE.equals(parts[0])) {
+                storage.remove(decode(parts[1]));
+            }
         }
-        Files.write(this.file, lines, StandardCharsets.UTF_8);
     }
 
     public PersistentDao(Path file) throws IOException {
@@ -64,8 +70,8 @@ public class PersistentDao implements Dao<String> {
     public void upsert(String key, String value) throws IllegalArgumentException, IOException {
         lock.lock();
         try {
+            append(PUT + " " + encode(key) + " " + encode(value));
             storage.put(key, value);
-            save();
         } finally {
             lock.unlock();
         }
@@ -75,8 +81,8 @@ public class PersistentDao implements Dao<String> {
     public void delete(String key) throws IllegalArgumentException, IOException {
         lock.lock();
         try {
+            append(DELETE + " " + encode(key));
             storage.remove(key);
-            save();
         } finally {
             lock.unlock();
         }

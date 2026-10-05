@@ -11,6 +11,7 @@ import java.nio.file.Files;
 
 public class UrlShortenerServiceImpl implements UrlShortenerService {
     private final HttpServer server;
+    private static final int STOP_DELAY_SECONDS = 1;
 
     public UrlShortenerServiceImpl(int port) throws IOException {
         Path storageDir = Path.of(System.getProperty("java.io.tmpdir"), "ruavee-storage");
@@ -34,6 +35,6 @@ public class UrlShortenerServiceImpl implements UrlShortenerService {
 
     @Override
     public void stop() {
-        server.stop(0);
+        server.stop(STOP_DELAY_SECONDS);
     }
 }
