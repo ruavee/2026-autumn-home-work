@@ -42,7 +42,7 @@ public class KVServiceImpl implements KVService {
         String method = exchange.getRequestMethod();
         switch (method) {
             case "GET" -> {
-                try{
+                try {
                     byte[] value = dao.get(id);
                     exchange.sendResponseHeaders(200, value.length);
                     exchange.getResponseBody().write(value);

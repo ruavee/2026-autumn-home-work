@@ -4,6 +4,7 @@ import company.vk.edu.distrib.compute.Dao;
 import company.vk.edu.distrib.compute.kv.KVService;
 
 import java.io.IOException;
+import java.net.HttpURLConnection;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -43,10 +44,11 @@ class RemoteStringDao implements Dao<String> {
     @Override
     public void upsert(String key, String value) throws IllegalArgumentException, IOException {
         URI uri = URI.create("http://localhost:" + port + "/v0/entity/" + key);
-        HttpRequest request = HttpRequest.newBuilder(uri).PUT(HttpRequest.BodyPublishers.ofString(value, UTF_8)).build();
+        HttpRequest request = HttpRequest.newBuilder(uri)
+                .PUT(HttpRequest.BodyPublishers.ofString(value, UTF_8)).build();
         try {
             HttpResponse<Void> response = client.send(request, HttpResponse.BodyHandlers.discarding());
-            if (response.statusCode() != 201) {
+            if (response.statusCode() != HttpURLConnection.HTTP_CREATED) {
                 throw new IOException("Unexpected HTTP status: " + response.statusCode());
             }
         } catch (InterruptedException e) {
@@ -61,7 +63,7 @@ class RemoteStringDao implements Dao<String> {
         HttpRequest request = HttpRequest.newBuilder(uri).DELETE().build();
         try {
             HttpResponse<Void> response = client.send(request, HttpResponse.BodyHandlers.discarding());
-            if (response.statusCode() != 202) {
+            if (response.statusCode() != HttpURLConnection.HTTP_ACCEPTED) {
                 throw new IOException("Unexpected HTTP status: " + response.statusCode());
             }
         } catch (InterruptedException e) {
