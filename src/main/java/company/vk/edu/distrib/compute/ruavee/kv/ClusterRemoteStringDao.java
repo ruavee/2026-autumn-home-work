@@ -8,11 +8,12 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.NoSuchElementException;
 
 public class ClusterRemoteStringDao implements Dao<String> {
-    private final List<RemoteStringDao> daos = new ArrayList<>();
+    private final List<RemoteStringDao> daos;
     private final int[] ports;
 
     public ClusterRemoteStringDao(int... ports) {
@@ -20,10 +21,7 @@ public class ClusterRemoteStringDao implements Dao<String> {
             throw new IllegalArgumentException("No ports provided");
         }
         this.ports = ports.clone();
-        for (int port : ports) {
-            RemoteStringDao dao = new RemoteStringDao(port);
-            daos.add(dao);
-        }
+        this.daos = Arrays.stream(this.ports).mapToObj(RemoteStringDao::new).toList();
     }
 
     private RemoteStringDao selectDao(String key) {
