@@ -18,6 +18,7 @@ public class KVServiceImpl implements KVService {
     private final HttpServer server;
     private final Dao<byte[]> dao;
     private static final int STOP_DELAY_SECONDS = 1;
+    private static final String ENTITY_PATH = "/v0/entity";
 
     private void handleStatus(HttpExchange exchange) throws IOException {
         String method = exchange.getRequestMethod();
@@ -29,14 +30,18 @@ public class KVServiceImpl implements KVService {
         exchange.close();
     }
 
+    private static boolean isInvalidQuery(String query) {
+        return query == null || !query.startsWith("id=") || query.length() == 3;
+    }
+
     private void handleEntity(HttpExchange exchange) throws IOException {
         String path = exchange.getRequestURI().getPath();
-        if (!"/v0/entity".equals(path)) {
+        if (!ENTITY_PATH.equals(path)) {
             exchange.close();
             return;
         }
         String query = exchange.getRequestURI().getRawQuery();
-        if (query == null || !query.startsWith("id=") || query.length() == 3) {
+        if (isInvalidQuery(query)) {
             exchange.sendResponseHeaders(400, -1);
             exchange.close();
             return;
