@@ -8,6 +8,8 @@ import company.vk.edu.distrib.compute.kv.KVService;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.net.InetSocketAddress;
+import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.NoSuchElementException;
@@ -29,16 +31,17 @@ public class KVServiceImpl implements KVService {
 
     private void handleEntity(HttpExchange exchange) throws IOException {
         String path = exchange.getRequestURI().getPath();
-        if (!path.startsWith("/v0/entity/")) {
+        if (!"/v0/entity".equals(path)) {
             exchange.close();
             return;
         }
-        String id = path.substring("/v0/entity/".length());
-        if (id.isEmpty()) {
-            exchange.sendResponseHeaders(400,-1);
+        String query = exchange.getRequestURI().getRawQuery();
+        if (query == null || !query.startsWith("id=") || query.length() == 3) {
+            exchange.sendResponseHeaders(400, -1);
             exchange.close();
             return;
         }
+        String id = URLDecoder.decode(query.substring(3), StandardCharsets.UTF_8);
         String method = exchange.getRequestMethod();
         switch (method) {
             case "GET" -> {
@@ -73,7 +76,7 @@ public class KVServiceImpl implements KVService {
         this.server = HttpServer.create(new InetSocketAddress(port), 0);
 
         server.createContext("/v0/status", this::handleStatus);
-        server.createContext("/v0/entity/", this::handleEntity);
+        server.createContext("/v0/entity", this::handleEntity);
     }
 
     @Override

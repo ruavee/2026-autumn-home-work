@@ -1,7 +1,6 @@
 package company.vk.edu.distrib.compute.ruavee.kv;
 
 import company.vk.edu.distrib.compute.Dao;
-import company.vk.edu.distrib.compute.kv.KVService;
 import company.vk.edu.distrib.compute.kv.RemoteDaoFactory;
 import company.vk.edu.distrib.compute.kv.RemoteDaoFactoryTest;
 
@@ -17,8 +16,6 @@ public class RemoteStringDaoFactory implements RemoteDaoFactory<String> {
             throw new IllegalArgumentException("RemoteStringDaoFactory takes exactly one port");
         }
         int port = ports[0];
-        KVService kvService = new KVServiceImpl(port);
-        kvService.start();
-        return new RemoteStringDao(port, kvService);
+        return new RemoteStringDao(port);
     }
 }
