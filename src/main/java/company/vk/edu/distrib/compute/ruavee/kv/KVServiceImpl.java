@@ -19,10 +19,17 @@ public class KVServiceImpl implements KVService {
     private final Dao<byte[]> dao;
     private static final int STOP_DELAY_SECONDS = 1;
     private static final String ENTITY_PATH = "/v0/entity";
+    private static final String STATUS_PATH = "/v0/status";
+
+    private static final String METHOD_GET = "GET";
+    private static final String METHOD_PUT = "PUT";
+    private static final String METHOD_DELETE = "DELETE";
+    private static final String QUERY_PREFIX = "id=";
+    private static final int MAX_VALUE_BYTES = 8 * 1024 * 1024;
 
     private void handleStatus(HttpExchange exchange) throws IOException {
         String method = exchange.getRequestMethod();
-        if ("GET".equals(method)) {
+        if (METHOD_GET.equals(method)) {
             exchange.sendResponseHeaders(200, -1);
         } else {
             exchange.sendResponseHeaders(405, -1);
@@ -31,7 +38,7 @@ public class KVServiceImpl implements KVService {
     }
 
     private static boolean isInvalidQuery(String query) {
-        return query == null || !query.startsWith("id=") || query.length() == 3;
+        return query == null || !query.startsWith(QUERY_PREFIX) || query.length() == QUERY_PREFIX.length();
     }
 
     private void handleEntity(HttpExchange exchange) throws IOException {
@@ -46,10 +53,10 @@ public class KVServiceImpl implements KVService {
             exchange.close();
             return;
         }
-        String id = URLDecoder.decode(query.substring(3), StandardCharsets.UTF_8);
+        String id = URLDecoder.decode(query.substring(QUERY_PREFIX.length()), StandardCharsets.UTF_8);
         String method = exchange.getRequestMethod();
         switch (method) {
-            case "GET" -> {
+            case METHOD_GET -> {
                 try {
                     byte[] value = dao.get(id);
                     exchange.sendResponseHeaders(200, value.length);
@@ -58,11 +65,16 @@ public class KVServiceImpl implements KVService {
                     exchange.sendResponseHeaders(404, -1);
                 }
             }
-            case "PUT" -> {
-                dao.upsert(id, exchange.getRequestBody().readAllBytes());
-                exchange.sendResponseHeaders(201, -1);
+            case METHOD_PUT -> {
+                byte[] body = exchange.getRequestBody().readNBytes(MAX_VALUE_BYTES + 1);
+                if (body.length > MAX_VALUE_BYTES) {
+                    exchange.sendResponseHeaders(413, -1);
+                } else {
+                    dao.upsert(id, body);
+                    exchange.sendResponseHeaders(201, -1);
+                }
             }
-            case "DELETE" -> {
+            case METHOD_DELETE -> {
                 dao.delete(id);
                 exchange.sendResponseHeaders(202, -1);
             }
@@ -80,8 +92,8 @@ public class KVServiceImpl implements KVService {
         this.dao = new PersistentByteDao(file);
         this.server = HttpServer.create(new InetSocketAddress(port), 0);
 
-        server.createContext("/v0/status", this::handleStatus);
-        server.createContext("/v0/entity", this::handleEntity);
+        server.createContext(STATUS_PATH, this::handleStatus);
+        server.createContext(ENTITY_PATH, this::handleEntity);
     }
 
     @Override

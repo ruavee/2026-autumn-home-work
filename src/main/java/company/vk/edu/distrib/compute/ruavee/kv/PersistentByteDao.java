@@ -6,13 +6,14 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardOpenOption;
 import java.util.Arrays;
 import java.util.Base64;
 import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.ReentrantLock;
+import java.io.BufferedWriter;
+import java.nio.file.StandardCopyOption;
 
 public class PersistentByteDao implements Dao<byte[]> {
     private static final String PUT = "P";
@@ -38,14 +39,19 @@ public class PersistentByteDao implements Dao<byte[]> {
         return Base64.getEncoder().encodeToString(value);
     }
 
-    private void append(String line) throws IOException {
-        Files.writeString(
-                file,
-                line + System.lineSeparator(),
-                StandardCharsets.UTF_8,
-                StandardOpenOption.CREATE,
-                StandardOpenOption.APPEND
-        );
+    private void saveSnapshot(Map<String, byte[]> snapshot) throws IOException {
+        Path temp = Files.createTempFile(file.toAbsolutePath().getParent(), "kv-", ".tmp");
+        try {
+            try (BufferedWriter writer = Files.newBufferedWriter(temp, StandardCharsets.UTF_8)) {
+                for (Map.Entry<String, byte[]> entry : snapshot.entrySet()) {
+                    writer.write(PUT + " " + encodeKey(entry.getKey()) + " " + encodeValue(entry.getValue()));
+                    writer.newLine();
+                }
+            }
+            Files.move(temp, file, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+        } finally {
+            Files.deleteIfExists(temp);
+        }
     }
 
     private void load() throws IOException {
@@ -80,8 +86,12 @@ public class PersistentByteDao implements Dao<byte[]> {
     public void upsert(String key, byte[] value) throws IllegalArgumentException, IOException {
         lock.lock();
         try {
-            append(PUT + " " + encodeKey(key) + " " + encodeValue(value));
-            storage.put(key, Arrays.copyOf(value, value.length));
+            Map<String, byte[]> snapshot = new ConcurrentHashMap<>(storage);
+            byte[] valueCopy = Arrays.copyOf(value, value.length);
+            snapshot.put(key, valueCopy);
+
+            saveSnapshot(snapshot);
+            storage.put(key, valueCopy);
         } finally {
             lock.unlock();
         }
@@ -91,7 +101,10 @@ public class PersistentByteDao implements Dao<byte[]> {
     public void delete(String key) throws IllegalArgumentException, IOException {
         lock.lock();
         try {
-            append(DELETE + " " + encodeKey(key));
+            Map<String, byte[]> snapshot = new ConcurrentHashMap<>(storage);
+            snapshot.remove(key);
+
+            saveSnapshot(snapshot);
             storage.remove(key);
         } finally {
             lock.unlock();
@@ -100,6 +113,11 @@ public class PersistentByteDao implements Dao<byte[]> {
 
     @Override
     public void close() throws IOException {
-        // Nothing to do here :)
+        lock.lock();
+        try {
+            storage.clear();
+        } finally {
+            lock.unlock();
+        }
     }
 }
