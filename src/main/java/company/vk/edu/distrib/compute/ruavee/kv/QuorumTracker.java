@@ -6,6 +6,8 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.locks.ReentrantLock;
 
 final class QuorumTracker {
+    private static final String GET_METHOD = "GET";
+    private static final int HTTP_OK = 200;
     private final String method;
     private final int ack;
     private final int replicaCount;
@@ -66,7 +68,7 @@ final class QuorumTracker {
     }
 
     private void captureValue(HttpResponse<byte[]> response) {
-        if ("GET".equals(method) && response.statusCode() == 200 && foundValue == null) {
+        if (GET_METHOD.equals(method) && response.statusCode() == HTTP_OK && foundValue == null) {
             foundValue = response.body();
         }
     }
