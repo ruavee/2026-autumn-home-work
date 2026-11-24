@@ -1,4 +1,3 @@
-
 package company.vk.edu.distrib.compute.ruavee.urlshortener;
 
 import com.sun.net.httpserver.HttpExchange;
@@ -14,8 +13,11 @@ import java.time.Instant;
 import java.util.NoSuchElementException;
 import java.util.concurrent.locks.ReentrantLock;
 
-final class LinksHandler {
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
+final class LinksHandler {
+    private static final Logger LOG = LoggerFactory.getLogger(LinksHandler.class);
     private static final String ALPHABET = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
     private static final int ID_LENGTH = 10;
 
@@ -54,7 +56,9 @@ final class LinksHandler {
         try {
             dao.delete(id);
         } catch (NoSuchElementException e) {
-            // The link might already have been deleted.
+            if (LOG.isDebugEnabled()) {
+                LOG.debug("Link {} has already been deleted", id);
+            }
         } finally {
             lock.unlock();
         }
