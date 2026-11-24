@@ -1,16 +1,12 @@
 package company.vk.edu.distrib.compute.ruavee.moderation;
 
-import company.vk.edu.distrib.compute.moderation.LinkCreatedEvent;
-import company.vk.edu.distrib.compute.moderation.ModerationResultEvent;
 import company.vk.edu.distrib.compute.moderation.ModerationService;
-import company.vk.edu.distrib.compute.ruavee.urlshortener.LinkEventCodecUtils;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.clients.consumer.OffsetAndMetadata;
 import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.ProducerConfig;
-import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.errors.WakeupException;
 import org.apache.kafka.common.serialization.StringDeserializer;
@@ -19,9 +15,7 @@ import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.nio.charset.StandardCharsets;
 import java.time.Duration;
-import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
@@ -30,18 +24,18 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.locks.ReentrantLock;
 
 public final class ModerationServiceImpl implements ModerationService {
     private static final Logger LOG = LoggerFactory.getLogger(ModerationServiceImpl.class);
     private static final String CREATED_TOPIC = "links.created";
-    private static final String MODERATED_TOPIC = "links.moderated";
-    private static final String DEAD_LETTER_TOPIC = "links.created.dlt";
     private static final String GROUP_ID = "ruavee-moderators";
 
     private final String bootstrapServers;
-    private final UrlModerationChecker checker = new UrlModerationChecker();
+    private final ModerationRecordProcessor processor = new ModerationRecordProcessor();
     private final AtomicBoolean running = new AtomicBoolean(false);
     private final AtomicReference<@Nullable KafkaConsumer<String, String>> consumer = new AtomicReference<>();
+    private final ReentrantLock lifecycleLock = new ReentrantLock();
     private @Nullable Thread worker;
 
     public ModerationServiceImpl(String bootstrapServers) {
@@ -72,39 +66,32 @@ public final class ModerationServiceImpl implements ModerationService {
         return properties;
     }
 
-    private ProducerRecord<String, String> deadLetter(ConsumerRecord<String, String> record, String error) {
-        ProducerRecord<String, String> result = new ProducerRecord<>(DEAD_LETTER_TOPIC, record.key(), record.value());
-        result.headers().add("error", error.getBytes(StandardCharsets.UTF_8));
-        return result;
-    }
-
-    private ProducerRecord<String, String> prepareResult(ConsumerRecord<String, String> record) {
-        try {
-            LinkCreatedEvent event = LinkEventCodecUtils.decode(record.value());
-            if (!event.id().equals(record.key())) {
-                return deadLetter(record, "Link id and Kafka key do not match");
-            }
-            boolean banned = checker.isBanned(event.url());
-            ModerationResultEvent result = new ModerationResultEvent(
-                    event.id(), !banned, banned ? "Banned word detected" : "", Instant.now()
-            );
-            return new ProducerRecord<>(MODERATED_TOPIC, event.id(), ModerationResultCodecUtils.encode(result));
-        } catch (IllegalArgumentException e) {
-            return deadLetter(record, e.toString());
-        }
-    }
-
     private boolean publish(KafkaProducer<String, String> producer, ConsumerRecord<String, String> record) {
         try {
-            producer.send(prepareResult(record)).get(5, TimeUnit.SECONDS);
+            producer.send(processor.prepareResult(record)).get(5, TimeUnit.SECONDS);
             return true;
         } catch (InterruptedException e) {
             running.set(false);
             Thread.currentThread().interrupt();
             return false;
         } catch (ExecutionException | TimeoutException e) {
-            LOG.warn("Cannot publish moderation of link {}", record.key(), e);
+            if (LOG.isWarnEnabled()) {
+                LOG.warn("Cannot publish moderation of link {}", record.key(), e);
+            }
             return false;
+        }
+    }
+
+    private void processRecord(
+        KafkaConsumer<String, String> kafka,
+        KafkaProducer<String, String> producer,
+        ConsumerRecord<String, String> record
+    ) {
+        TopicPartition partition = new TopicPartition(record.topic(), record.partition());
+        if (publish(producer, record)) {
+            kafka.commitSync(Map.of(partition, new OffsetAndMetadata(record.offset() + 1)));
+        } else {
+            kafka.seek(partition, record.offset());
         }
     }
 
@@ -115,12 +102,7 @@ public final class ModerationServiceImpl implements ModerationService {
             kafka.subscribe(List.of(CREATED_TOPIC));
             while (running.get()) {
                 for (ConsumerRecord<String, String> record : kafka.poll(Duration.ofMillis(250))) {
-                    TopicPartition partition = new TopicPartition(record.topic(), record.partition());
-                    if (publish(producer, record)) {
-                        kafka.commitSync(Map.of(partition, new OffsetAndMetadata(record.offset() + 1)));
-                    } else {
-                        kafka.seek(partition, record.offset());
-                    }
+                    processRecord(kafka, producer, record);
                 }
             }
         } catch (WakeupException e) {
@@ -135,25 +117,39 @@ public final class ModerationServiceImpl implements ModerationService {
     }
 
     @Override
-    public synchronized void start() {
-        if (worker != null) {
-            throw new IllegalStateException("Already started");
+    public void start() {
+        lifecycleLock.lock();
+        try {
+            if (worker != null) {
+                throw new IllegalStateException("Already started");
+            }
+            running.set(true);
+            worker = new Thread(this::consume, "moderation-consumer");
+            worker.start();
+        } finally {
+            lifecycleLock.unlock();
         }
-        running.set(true);
-        worker = new Thread(this::consume, "moderation-consumer");
-        worker.start();
     }
 
     @Override
-    public synchronized void stop() {
-        running.set(false);
-        KafkaConsumer<String, String> activeConsumer = consumer.get();
-        if (activeConsumer != null) {
-            activeConsumer.wakeup();
+    public void stop() {
+        Thread activeWorker;
+
+        lifecycleLock.lock();
+        try {
+            running.set(false);
+            KafkaConsumer<String, String> activeConsumer = consumer.get();
+            if (activeConsumer != null) {
+                activeConsumer.wakeup();
+            }
+            activeWorker = worker;
+        } finally {
+            lifecycleLock.unlock();
         }
-        if (worker != null) {
+
+        if (activeWorker != null) {
             try {
-                worker.join();
+                activeWorker.join();
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }

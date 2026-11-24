@@ -46,7 +46,9 @@ public final class LinkEventPublisher implements AutoCloseable {
         try {
             executor.execute(() -> send(event));
         } catch (RejectedExecutionException e) {
-            LOG.warn("Cannot enqueue moderation event for {}", event.id(), e);
+            if (LOG.isWarnEnabled()) {
+                LOG.warn("Cannot enqueue moderation event for {}", event.id(), e);
+            }
         }
     }
 
@@ -55,12 +57,14 @@ public final class LinkEventPublisher implements AutoCloseable {
                 new ProducerRecord<>(TOPIC, event.id(), LinkEventCodecUtils.encode(event));
         try {
             producer.send(record, (metadata, exception) -> {
-                if (exception != null) {
+                if (exception != null && LOG.isWarnEnabled()) {
                     LOG.warn("Failed to publish link {}", event.id(), exception);
                 }
             });
         } catch (RuntimeException e) {
-            LOG.warn("Cannot send moderation event for {}", event.id(), e);
+            if (LOG.isWarnEnabled()) {
+                LOG.warn("Cannot send moderation event for {}", event.id(), e);
+            }
         }
     }
 

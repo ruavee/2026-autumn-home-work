@@ -61,18 +61,25 @@ final class ModerationResultListener implements AutoCloseable {
         }
     }
 
+    private void processRecord(
+        KafkaConsumer<String, String> kafka,
+        ConsumerRecord<String, String> record
+    ) {
+        TopicPartition partition = new TopicPartition(record.topic(), record.partition());
+        if (apply(record)) {
+            kafka.commitSync(Map.of(partition, new OffsetAndMetadata(record.offset() + 1)));
+        } else {
+            kafka.seek(partition, record.offset());
+        }
+    }
+
     private void consume() {
         try (KafkaConsumer<String, String> kafka = new KafkaConsumer<>(properties())) {
             consumer.set(kafka);
             kafka.subscribe(List.of(TOPIC));
             while (running.get()) {
                 for (ConsumerRecord<String, String> record : kafka.poll(Duration.ofMillis(250))) {
-                    TopicPartition partition = new TopicPartition(record.topic(), record.partition());
-                    if (apply(record)) {
-                        kafka.commitSync(Map.of(partition, new OffsetAndMetadata(record.offset() + 1)));
-                    } else {
-                        kafka.seek(partition, record.offset());
-                    }
+                    processRecord(kafka, record);
                 }
             }
         } catch (WakeupException e) {

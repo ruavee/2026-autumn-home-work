@@ -52,11 +52,9 @@ final class LinksHandler {
     void deleteRejectedLink(String id) throws IOException {
         lock.lock();
         try {
-            try {
-                dao.delete(id);
-            } catch (NoSuchElementException e) {
-                // The link might already have been deleted.
-            }
+            dao.delete(id);
+        } catch (NoSuchElementException e) {
+            // The link might already have been deleted.
         } finally {
             lock.unlock();
         }
